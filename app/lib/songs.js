@@ -7,6 +7,7 @@ const DATA_DIR = path.join(process.cwd(), "data");
 const SONGS_FILE = path.join(DATA_DIR, "songs.json");
 const PUBLIC_SONGS_DIR = path.join(process.cwd(), "public", "uploads", "songs");
 const PUBLIC_SONGS_URL = "/uploads/songs";
+const API_SONGS_URL = "/api/songs/file";
 
 function emptySongs() {
   return Array.from({ length: SONG_LIMIT }, (_, index) => ({
@@ -25,6 +26,34 @@ function cleanText(value) {
   return String(value ?? "").trim().slice(0, 160);
 }
 
+function songFileNameFromUrl(url) {
+  const cleanUrl = cleanText(url);
+
+  if (cleanUrl.startsWith(`${PUBLIC_SONGS_URL}/`)) {
+    return cleanUrl.slice(PUBLIC_SONGS_URL.length + 1);
+  }
+
+  if (cleanUrl.startsWith(`${API_SONGS_URL}/`)) {
+    try {
+      return decodeURIComponent(cleanUrl.slice(API_SONGS_URL.length + 1));
+    } catch {
+      return "";
+    }
+  }
+
+  return "";
+}
+
+function songApiUrl(fileName) {
+  const cleanFileName = path.basename(cleanText(fileName));
+
+  return cleanFileName ? `${API_SONGS_URL}/${encodeURIComponent(cleanFileName)}` : "";
+}
+
+function cleanSongUrl(url) {
+  return songApiUrl(songFileNameFromUrl(url));
+}
+
 function sanitizeSongs(value) {
   const current = emptySongs();
   const incoming = Array.isArray(value) ? value : [];
@@ -41,7 +70,7 @@ function sanitizeSongs(value) {
       title: cleanText(song.title),
       event: cleanText(song.event),
       description: cleanText(song.description),
-      url: cleanText(song.url),
+      url: cleanSongUrl(song.url),
       fileName: cleanText(song.fileName),
       size: Number(song.size) || 0,
       updatedAt: cleanText(song.updatedAt),
@@ -86,15 +115,17 @@ function safeFileStem(name) {
 }
 
 async function removePublicFile(url) {
-  if (!url || !url.startsWith(`${PUBLIC_SONGS_URL}/`)) {
+  const fileName = songFileNameFromUrl(url);
+
+  if (!fileName) {
     return;
   }
 
-  const target = path.join(process.cwd(), "public", url);
+  const target = path.join(PUBLIC_SONGS_DIR, path.basename(fileName));
   const resolved = path.resolve(target);
   const allowedRoot = path.resolve(PUBLIC_SONGS_DIR);
 
-  if (!resolved.startsWith(allowedRoot)) {
+  if (!resolved.startsWith(`${allowedRoot}${path.sep}`)) {
     return;
   }
 
@@ -146,7 +177,7 @@ export async function saveSongSlot(slot, file, fields) {
     title: cleanText(fields.title) || `Song ${slot}`,
     event: cleanText(fields.event),
     description: cleanText(fields.description),
-    url: `${PUBLIC_SONGS_URL}/${storedName}`,
+    url: songApiUrl(storedName),
     fileName,
     size: file.size,
     updatedAt: new Date().toISOString(),
